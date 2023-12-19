@@ -69,7 +69,6 @@ def main():
     # start training
     step = 0
     for epoch in range(initial_epoch, opt.epochs):
-        scheduler.step(epoch)
         for param_group in optimizer.param_groups:
             print('learning rate %f' % param_group["lr"])
 
@@ -105,6 +104,8 @@ def main():
                 writer.add_scalar('PSNR on training data', psnr_train, step)
             step += 1
         ## epoch training end
+            
+        scheduler.step()
 
         # log the images
         model.eval()
