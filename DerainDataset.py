@@ -1,16 +1,29 @@
-import os
 import os.path
-import numpy as np
 import random
+
+import cv2
 import h5py
 import torch
-import cv2
-import glob
 import torch.utils.data as udata
+
 from utils import *
 
 
 def Im2Patch(img, win, stride=1):
+    """
+    将一张图像分割成小块
+
+    参数：
+    - img (numpy.ndarray): The input image, should be a 3D array.
+    - win (int): The size of the window, which will determine the size of the patches.
+    - stride (int, optional): The stride between patches. Default is 1.
+
+    如果 stride < win, 那么小块之间会有重叠。
+
+    返回值：
+    - numpy.ndarray: A 4D array of patches. The dimensions are [channel, patch_width, patch_height, number_of_patches].
+
+    """
     k = 0
     endc = img.shape[0]
     endw = img.shape[1]
@@ -42,19 +55,19 @@ def prepare_data_Rain12600(data_path, patch_size, stride):
     train_num = 0
     for i in range(900):
         target_file = "%d.jpg" % (i + 1)
-        target = cv2.imread(os.path.join(target_path,target_file))
+        target = cv2.imread(os.path.join(target_path, target_file))
         b, g, r = cv2.split(target)
         target = cv2.merge([r, g, b])
 
         for j in range(14):
-            input_file = "%d_%d.jpg" % (i+1, j+1)
-            input_img = cv2.imread(os.path.join(input_path,input_file))
+            input_file = "%d_%d.jpg" % (i + 1, j + 1)
+            input_img = cv2.imread(os.path.join(input_path, input_file))
             b, g, r = cv2.split(input_img)
             input_img = cv2.merge([r, g, b])
 
             target_img = target
             target_img = np.float32(normalize(target_img))
-            target_patches = Im2Patch(target_img.transpose(2,0,1), win=patch_size, stride=stride)
+            target_patches = Im2Patch(target_img.transpose(2, 0, 1), win=patch_size, stride=stride)
 
             input_img = np.float32(normalize(input_img))
             input_patches = Im2Patch(input_img.transpose(2, 0, 1), win=patch_size, stride=stride)
@@ -88,23 +101,23 @@ def prepare_data_RainTrainH(data_path, patch_size, stride):
     train_num = 0
     for i in range(1800):
         target_file = "norain-%d.png" % (i + 1)
-        if os.path.exists(os.path.join(target_path,target_file)):
+        if os.path.exists(os.path.join(target_path, target_file)):
 
-            target = cv2.imread(os.path.join(target_path,target_file))
+            target = cv2.imread(os.path.join(target_path, target_file))
             b, g, r = cv2.split(target)
             target = cv2.merge([r, g, b])
 
             input_file = "rain-%d.png" % (i + 1)
 
-            if os.path.exists(os.path.join(input_path,input_file)): # we delete 546 samples
+            if os.path.exists(os.path.join(input_path, input_file)):  # we delete 546 samples
 
-                input_img = cv2.imread(os.path.join(input_path,input_file))
+                input_img = cv2.imread(os.path.join(input_path, input_file))
                 b, g, r = cv2.split(input_img)
                 input_img = cv2.merge([r, g, b])
 
                 target_img = target
                 target_img = np.float32(normalize(target_img))
-                target_patches = Im2Patch(target_img.transpose(2,0,1), win=patch_size, stride=stride)
+                target_patches = Im2Patch(target_img.transpose(2, 0, 1), win=patch_size, stride=stride)
 
                 input_img = np.float32(normalize(input_img))
                 input_patches = Im2Patch(input_img.transpose(2, 0, 1), win=patch_size, stride=stride)
@@ -127,7 +140,9 @@ def prepare_data_RainTrainH(data_path, patch_size, stride):
 
 
 def prepare_data_RainTrainL(data_path, patch_size, stride):
-    # train
+    '''
+    为 Rain100L 训练集准备训练数据
+    '''
     print('process training data')
     input_path = os.path.join(data_path)
     target_path = os.path.join(data_path)
@@ -141,24 +156,27 @@ def prepare_data_RainTrainL(data_path, patch_size, stride):
     train_num = 0
     for i in range(200):
         target_file = "norain-%d.png" % (i + 1)
-        target = cv2.imread(os.path.join(target_path,target_file))
+        target = cv2.imread(os.path.join(target_path, target_file))
+        # cv2 读取 RGB 图片采用 B、G、R 的顺序，因此有了下面的重排操作
         b, g, r = cv2.split(target)
         target = cv2.merge([r, g, b])
 
+        # 针对同一张图像，造出两对训练数据，一对不动，另一对水平翻转
         for j in range(2):
             input_file = "rain-%d.png" % (i + 1)
-            input_img = cv2.imread(os.path.join(input_path,input_file))
+            input_img = cv2.imread(os.path.join(input_path, input_file))
             b, g, r = cv2.split(input_img)
             input_img = cv2.merge([r, g, b])
 
             target_img = target
 
             if j == 1:
+                # 沿垂直轴（水平）翻转
                 target_img = cv2.flip(target_img, 1)
                 input_img = cv2.flip(input_img, 1)
 
             target_img = np.float32(normalize(target_img))
-            target_patches = Im2Patch(target_img.transpose(2,0,1), win=patch_size, stride=stride)
+            target_patches = Im2Patch(target_img.transpose(2, 0, 1), win=patch_size, stride=stride)
 
             input_img = np.float32(normalize(input_img))
             input_patches = Im2Patch(input_img.transpose(2, 0, 1), win=patch_size, stride=stride)
@@ -200,7 +218,6 @@ class Dataset(udata.Dataset):
         return len(self.keys)
 
     def __getitem__(self, index):
-
         target_path = os.path.join(self.data_path, 'train_target.h5')
         input_path = os.path.join(self.data_path, 'train_input.h5')
 
@@ -215,5 +232,3 @@ class Dataset(udata.Dataset):
         input_h5f.close()
 
         return torch.Tensor(input), torch.Tensor(target)
-
-

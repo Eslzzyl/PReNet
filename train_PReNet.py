@@ -1,8 +1,6 @@
 import os
 import argparse
-import numpy as np
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torchvision.utils as utils
 from torch.autograd import Variable
@@ -44,6 +42,9 @@ def main():
     model = PReNet(recurrent_iter=opt.recurrent_iter, use_GPU=opt.use_gpu)
     print_network(model)
 
+    '''
+    根据论文，作者分别尝试了 MSE loss 和 negative SSIM loss，实验证明 SSIM 的效果比 MSE 好。
+    '''
     # loss function
     # criterion = nn.MSELoss(size_average=False)
     criterion = SSIM()
@@ -55,8 +56,10 @@ def main():
 
     # Optimizer
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
+    # 在训练过程中逐渐降低学习率，即在每个 milestone 处降低，每次降低到原先的 0.2 倍
     scheduler = MultiStepLR(optimizer, milestones=opt.milestone, gamma=0.2)  # learning rates
 
+    # 保存训练过程以便 TensorBoard 查看
     # record training
     writer = SummaryWriter(opt.save_path)
 
@@ -73,8 +76,10 @@ def main():
             print('learning rate %f' % param_group["lr"])
 
         ## epoch training start
-        for i, (input_train, target_train) in enumerate(loader_train, 0):
-            model.train()
+        for i, (input_train, target_train) in enumerate(loader_train, 0):   # 0 表示遍历时从索引的 0 位置开始
+            model.train()   # 调整到训练模式
+
+            # 训练时梯度会累积，而不是替换。因此需要清零梯度。据 GPT 所言，清零 model 的梯度是不必要的。如果有多个优化器，才需要清零 model 的梯度。
             model.zero_grad()
             optimizer.zero_grad()
 
@@ -85,11 +90,16 @@ def main():
 
             out_train, _ = model(input_train)
             pixel_metric = criterion(target_train, out_train)
+            # 对 SSIM 取反
             loss = -pixel_metric
 
+            # 计算梯度
             loss.backward()
+            # 根据梯度更新更新模型参数，optimizer 总是试图使 loss 更小。
+            # 使用负 SSIM loss，loss 越小，说明原始 SSIM 越大，说明和原图越相似。
             optimizer.step()
 
+            # 在评估模式下计算 PSNR，而 pixel_metric 是未经取反的 SSIM
             # training curve
             model.eval()
             out_train, _ = model(input_train)
@@ -104,10 +114,11 @@ def main():
                 writer.add_scalar('PSNR on training data', psnr_train, step)
             step += 1
         ## epoch training end
-            
+
+        # 每个 epoch 训练完后更新学习率（实际上只在 milestone 处更新）
         scheduler.step()
 
-        # log the images
+        # log the images (to TensorBoard)
         model.eval()
         out_train, _ = model(input_train)
         out_train = torch.clamp(out_train, 0., 1.)
@@ -118,6 +129,7 @@ def main():
         writer.add_image('rainy image', im_input, epoch+1)
         writer.add_image('deraining image', im_derain, epoch+1)
 
+        # 每个 epoch 训练完后保存 checkpoint
         # save model
         torch.save(model.state_dict(), os.path.join(opt.save_path, 'net_latest.pth'))
         if epoch % opt.save_freq == 0:

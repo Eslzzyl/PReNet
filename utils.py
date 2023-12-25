@@ -1,11 +1,8 @@
-import math
-import torch
 import re
-import torch.nn as nn
 import numpy as np
 from skimage.metrics import peak_signal_noise_ratio
-import  os
-import glob 
+import os
+import glob
 
 
 def findLastCheckpoint(save_dir):
@@ -38,7 +35,7 @@ def is_image(img_name):
     if img_name.endswith(".jpg") or img_name.endswith(".bmp") or img_name.endswith(".png"):
         return True
     else:
-        return  False
+        return False
 
 
 def print_network(net):
